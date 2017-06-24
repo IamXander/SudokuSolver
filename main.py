@@ -1,11 +1,20 @@
 import argparse
 import json
 import collections
-import rule
 import math
 import copy
-from tkinter import *
-from tkinter import ttk
+
+class color:
+   PURPLE = '\033[95m'
+   CYAN = '\033[96m'
+   DARKCYAN = '\033[36m'
+   BLUE = '\033[94m'
+   GREEN = '\033[92m'
+   YELLOW = '\033[93m'
+   RED = '\033[91m'
+   BOLD = '\033[1m'
+   UNDERLINE = '\033[4m'
+   END = '\033[0m'
 
 BOX_ROWS = 3
 BOX_COLS = 3
@@ -13,10 +22,6 @@ SUDOKU_ROWS = 9
 SUDOKU_COLS = 9
 NUM_MIN = 1
 NUM_MAX = 9
-# Format:
-# 0 = unsolved
-#Array = guesses
-# E = No box here (for odd formats)
 
 def load(location):
     return json.load(location)
@@ -27,24 +32,44 @@ def save(sudoku, location):
 
 
 def printSudoku(sudoku):
-    outstring = '\n'
+    outstring = ''
     for x in range(len(sudoku[0])):
-        outstring += '____'
-    outstring += '__\n'
+        outstring += '\u2015\u2015\u2015\u2015'
+    outstring += '\u2015\u2015\u2015'
+    print(outstring)
 
     line = ''
-    for row in sudoku:
-        for col in row:
-            outstring += ' | '
-            if col != 0 and not isinstance(col, list):
-                outstring += str(col)
-            else:
-                outstring += ' '
-        outstring += ' |\n'
-        for x in range(len(row)):
-            outstring += '____'
-        outstring += '__\n'
-    print(outstring)
+    for row in range(len(sudoku)):
+        prow1 = []
+        prow2 = []
+        prow3 = []
+        for col in range(len(sudoku[row])):
+            rowString = '|   '
+            if col % 3 == 0 and col != 0:
+                rowString = color.BOLD + color.CYAN + '||' + color.END + '   '
+            prow1 += rowString
+            prow2 += rowString
+            prow3 += rowString
+            if isinstance(sudoku[row][col], list):
+                for x in sudoku[row][col]:
+                    if x >= 1 and x <= 3:
+                        prow1[x-4] = str(x)
+                    elif x >= 4 and x <= 6:
+                        prow2[x-7] = str(x)
+                    else:
+                        prow3[x-10] = str(x)
+            elif sudoku[row][col] != 0:
+                prow2[-2] = color.BOLD + color.RED + str(sudoku[row][col]) + color.END;
+        print("".join(prow1) + '|')
+        print("".join(prow2) + '|')
+        print("".join(prow3) + '|')
+        #outstring += "".join(prow1) + '|\n' + "".join(prow2) + '|\n' + "".join(prow3) + '|\n'
+        if row % 3 == 2 and row != len(sudoku[row]) - 1:
+            print(color.BOLD + color.YELLOW + color.UNDERLINE + outstring + color.END)
+            #print(color.BOLD + color.YELLOW + outstring + color.END)
+        else:
+            print(outstring)
+    print()
 
 
 def getBox(sudoku, row, col):
@@ -92,6 +117,8 @@ def getPossibilities(sudoku):
                     if validMove(sudoku, row, col, x):
                         newGuesses.append(x)
                 if sudoku[row][col] == 0 or len(newGuesses) < len(sudoku[row][col]):
+                    if len(newGuesses) == 0: #There should always be guesses. If there is not the we have found a paradox
+                        raise ValueError('Invalid Sudoku')
                     sudoku[row][col] = newGuesses
     return sudoku
 
@@ -137,78 +164,59 @@ def rule2(sudoku, row, col):
 
     return sudoku[row][col]
 
+def isSolved(sudoku):
+    for row in sudoku:
+        for col in row:
+            if isinstance(col, list):
+                return False
+    return True
+
 
 def solveSudoku(sudoku):
-    sudoku = getPossibilities(sudoku)
+    try:
+        sudoku = getPossibilities(sudoku)
+    except ValueError as ve:
+        return False
     sudokuModified = True
+    possRow = 0;
+    possCol = 0;
+    sudokuCompleted = True;
     while sudokuModified:
         sudokuModified = False
+        sudokuCompleted = True;
         for row in range(0, SUDOKU_ROWS):
             for col in range(0, SUDOKU_COLS):
                 if isinstance(sudoku[row][col], list):
+                    sudokuCompleted = False;
+                    possRow = row
+                    possCol = col
                     newValue = rule1(sudoku, row, col)
-                    #print(newValue, sudoku[row][col])
                     if newValue != sudoku[row][col]:
-                        #print(True)
                         sudokuModified = True
-                        if not validMove(sudoku, row, col, newValue):
-                            print('NO BAD MOVE')
                         sudoku[row][col] = newValue
-                        sudoku = getPossibilities(sudoku)
+                        try:
+                            sudoku = getPossibilities(sudoku)
+                        except ValueError as ve:
+                            return False
                     else:
                         newValue = rule2(sudoku, row, col)
                         if newValue != sudoku[row][col]:
                             sudokuModified = True
-                            if not validMove(sudoku, row, col, newValue):
-                                print('NO BAD MOVE 2')
                             sudoku[row][col] = newValue
-                            sudoku = getPossibilities(sudoku)
+                            try:
+                                sudoku = getPossibilities(sudoku)
+                            except ValueError as ve:
+                                return False
+    #Rule 1 and 2 didn't pan out. Time to brute force
+    if sudokuCompleted == False:
+        guessList = sudoku[possRow][possCol]
+        #print('Not solved')
+        for x in guessList:
+            sudoku[possRow][possCol] = x;
+            tmpSudoku = solveSudoku(copy.deepcopy(sudoku))
+            if tmpSudoku != False and isSolved(tmpSudoku) == True:
+                return tmpSudoku
     return sudoku
-
-def renderSudoku(sudokuOutput, sudoku):
-    for row in range(SUDOKU_ROWS):
-        for col in range(SUDOKU_COLS):
-            if isinstance(sudoku[row][col], list):
-                output = ''
-                for x in range(NUM_MIN, NUM_MAX+1):
-                    if x in sudoku[row][col]:
-                        output += str(x) + ' '
-                    else:
-                        output += '_ '
-                    if x % 3 == 0:
-                        output = output[:-1] + '\n'
-                output = output[:-1]
-                sudokuOutput[row][col].config(text=output)
-            else:
-                sudokuOutput[row][col].config(text='\n__' + str(sudoku[row][col]) + '__\n')
-
-def action():
-    if (args.print != None):
-        printSudoku(load(args.print[0])[0])
-        root.destroy()
-    elif (args.solve != None):
-        i = 0
-        for puzzle in sudokuList:
-            if (puzzle['puzzleNumber'] != 615):
-                continue
-            #printSudoku(puzzle['sudoku'])
-            sudoku = solveSudoku(copy.deepcopy(puzzle['sudoku']))
-            if puzzle['solution'] == sudoku:
-                i+=1
-            printSudoku(puzzle['solution'])
-            renderSudoku(sudokuOutput, sudoku)
-            #printSudoku(sudoku)
-            #print(puzzle['solution'] == sudoku)
-            if puzzle['solution'] != sudoku:
-                print('Could not solve puzzle ' + str(puzzle['puzzleNumber']) + ' difficulty:' + puzzle['puzzleDifficulty'])
-
-        print('Solved ' + str(i) + ' puzzles out of ' + str(len(sudokuList)) + ' which is ' + str(i*100/len(sudokuList)) + '%')
-        #root.destroy()
-        #save(sudoku, 'output.json')
-    else:
-        print("No Args... Please enter args")
-        root.destroy()
-        exit(0)
 
 
 parser = argparse.ArgumentParser(description='Lib for sudoku function')
@@ -219,36 +227,26 @@ parser.add_argument('--solve', nargs=1, type=argparse.FileType(),
 
 args = parser.parse_args()
 
-root = Tk()
-root.title("Sudoku")
-
-mainframe = ttk.Frame(root, padding="3 3 12 12")
-mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
-mainframe.columnconfigure(0, weight=1)
-mainframe.rowconfigure(0, weight=1)
-solveBtn = ttk.Button(mainframe)
-solveBtn.grid(column=0, row=SUDOKU_ROWS+1, columnspan=SUDOKU_COLS, sticky=(W, E))
-solveBtn.config(text='Solve', command=action)
-sudokuOutput = []
-for row in range(SUDOKU_ROWS):
-    sudokuOutput.append([])
-    for col in range(SUDOKU_COLS):
-        sudokuOutput[row].append(ttk.Label(mainframe))
-        sudokuOutput[row][col].grid(column=col, row=row, sticky=(W, E))
-        sudokuOutput[row][col].config(font=("Courier", 12), relief=SOLID, borderwidth=5, text='1 2 3\n4 5 6\n7 8 9')
-
-for child in mainframe.winfo_children(): child.grid_configure(padx=5, pady=5)
-
 if (args.print != None):
-    renderSudoku(sudokuOutput, load(args.print[0])[0])
+    sudokuList = load(args.print[0])
+    currentSudoku = sudokuList[0]['sudoku'];
+    currentSudoku = getPossibilities(currentSudoku)
+    printSudoku(currentSudoku)
 elif (args.solve != None):
     sudokuList = load(args.solve[0])
+    i = 0
     for puzzle in sudokuList:
-        if (puzzle['puzzleNumber'] == 615):
-            renderSudoku(sudokuOutput, getPossibilities(puzzle['sudoku']))
+        printSudoku(puzzle['sudoku'])
+        sudoku = solveSudoku(copy.deepcopy(puzzle['sudoku']))
+        if puzzle['solution'] == sudoku:
+            i+=1
+        printSudoku(sudoku)
+        # if puzzle['solution'] != sudoku:
+        #     print('Could not solve puzzle ' + str(puzzle['puzzleNumber']) + ' difficulty:' + puzzle['puzzleDifficulty'])
+
+    print('Solved ' + str(i) + ' puzzles out of ' + str(len(sudokuList)) + ' which is ' + str(i*100/len(sudokuList)) + '%')
 else:
     print("No Args... Please enter args")
-    root.destroy()
     exit(0)
 
-root.mainloop()
+#python main.py --solve sudokuList.py
